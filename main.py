@@ -31,44 +31,29 @@ async def get_video(
     Получает ссылку на видео с Kodik через anime_parsers_ru.
     """
     try:
-        # Получаем токен
-        token = parser.get_token()
+        # 1. Ищем аниме по shikimori_id
+        search_results = parser.search_by_id(id=shikimori_id, id_type="shikimori", limit=10)
         
-        # Получаем ссылки на видео
-        # Метод parse_video_by_shikimori_id возвращает словарь с качествами
-        video_info = parser.parse_video_by_shikimori_id(
-            shikimori_id=shikimori_id,
-            episode=episode,
-            token=token
-        )
+        if not search_results:
+            raise HTTPException(status_code=404, detail="Аниме не найдено в базе Kodik")
         
-        if not video_info:
-            raise HTTPException(status_code=404, detail="Видео не найдено")
+        # 2. Берём первый результат (там может быть несколько озвучек)
+        anime_data = search_results[0]
+        kodik_link = anime_data.get("link")
         
-        # video_info имеет структуру:
-        # {'360': 'url1', '480': 'url2', '720': 'url3'}
-        # Или {'link': 'url', 'quality': 720} в зависимости от версии
+        if not kodik_link:
+            raise HTTPException(status_code=404, detail="Ссылка на плеер не найдена")
         
-        # Приводим к единому формату
-        url = None
-        qualities = {}
+        # 3. Получаем прямую ссылку на видео из ссылки плеера
+        # Метод get_mp4_link возвращает ссылку на видеофайл
+        video_url = parser.get_mp4_link(kodik_link, seria_num=episode)
         
-        if isinstance(video_info, dict):
-            # Если это словарь с качествами
-            if '720' in video_info:
-                url = video_info.get(str(quality)) or video_info.get('720')
-                qualities = video_info
-            # Если это словарь с одной ссылкой
-            elif 'link' in video_info:
-                url = video_info['link']
-                qualities = {str(video_info.get('quality', 720)): url}
-        
-        if not url:
-            raise HTTPException(status_code=404, detail="Ссылка не найдена")
+        if not video_url:
+            raise HTTPException(status_code=404, detail="Не удалось получить ссылку на видео")
         
         return {
-            "url": url,
-            "qualities": qualities,
+            "url": video_url,
+            "qualities": {},
             "source": "kodik",
             "quality": quality
         }
